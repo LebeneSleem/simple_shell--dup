@@ -1,54 +1,84 @@
-#include "shell.h"
-void display_command_prompt(char **av, char **env)
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+
+#define MAX_ARGUMENTS 10
+
+/**
+ * main - Entry point for the shell program
+ *
+ * Return: Always 0
+ */
+int main(void)
 {
-    char *string = NULL;
-    size_t n = 0;
-    ssize_t character;
-    int a, status;
-    char *argv[] = {NULL, NULL};
-    pid_t child_pid;
+    char *command = NULL;
+    size_t command_size = 0;
+    ssize_t command_length;
+    char *token;
+    char *arguments[MAX_ARGUMENTS];
+    int arg_count;
+    pid_t pid;
+    int status;
 
     while (1)
     {
-        if (isatty(STDIN_FILENO))
-            printf("simple_shell$  ");
+        printf("$ ");  /* Display prompt */
+        command_length = getline(&command, &command_size, stdin);
 
-        character = getline(&string, &n, stdin);
-        if (character == -1)
+        if (command_length == -1)
         {
-            free(string);
+            if (feof(stdin))
+            {
+                printf("\n");
+                break;
+            }
+            perror("getline");
             exit(EXIT_FAILURE);
         }
 
-        a = 0;
-        while (string[a])
+        /* Remove the newline character at the end */
+        command[strcspn(command, "\n")] = '\0';
+
+        if (strlen(command) == 0)
+            continue;  /* Ignore empty commands */
+
+        token = strtok(command, " ");
+        arg_count = 0;
+
+        while (token != NULL && arg_count < MAX_ARGUMENTS - 1)
         {
-            if (string[a] == '\n')
-                string[a] = 0;
-            a++;
+            arguments[arg_count] = token;
+            token = strtok(NULL, " ");
+            arg_count++;
         }
+        arguments[arg_count] = NULL;
 
-        argv[0] = string;
-
-        child_pid = fork();
-        if (child_pid == -1)
+        pid = fork();
+        if (pid == -1)
         {
-            free(string);
+            perror("fork");
             exit(EXIT_FAILURE);
         }
-
-        if (child_pid == 0)
+        else if (pid == 0)
         {
-            if (execve(argv[0], argv, env) == -1)
-                printf("%s: No such file or directory\n", av[0]);
-            free(string); /*Free string before exiting child process*/
-            exit(EXIT_FAILURE); /*Make sure to exit the child process after execve or error message*/
+            /* Child process */
+            execvp(arguments[0], arguments);  /* Execute the command */
+            perror("execvp");
+            exit(EXIT_FAILURE);
         }
         else
         {
-            wait(&status);
-	}
+            /* Parent process */
+            waitpid(pid, &status, 0);  /* Wait for the child process to finish */
+            if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+                printf("Command '%s' not found\n", command);  /* Print error message */
+        }
     }
-            free(string); /*Free string after child process has terminated*/
+
+    free(command);
+    return 0;
 }
 
